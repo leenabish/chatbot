@@ -1,56 +1,80 @@
 import streamlit as st
-from openai import OpenAI
+import requests
 
-# Show title and description.
-st.title("💬 Chatbot")
-st.write(
-    "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
-    "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
-    "You can also learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
-)
+# --- CONFIG ---
+API_KEY = "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"
+API_URL = "https://api.groq.com/openai/v1/chat/completions"
+MODEL = "llama3-70b-8192"
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
-openai_api_key = st.text_input("OpenAI API Key", type="password")
-if not openai_api_key:
-    st.info("Please add your OpenAI API key to continue.", icon="🗝️")
-else:
+st.set_page_config(page_title="Dream Analyzer Chatbot", page_icon="🌙", layout="centered")
 
-    # Create an OpenAI client.
-    client = OpenAI(api_key=openai_api_key)
+# --- CUSTOM CSS ---
+st.markdown("""
+    <style>
+    body {
+        background-color: #000000;
+        color: #00ffff;
+    }
+    .stApp {
+        background-color: #000000;
+    }
+    .css-18e3th9 {
+        background-color: #000000 !important;
+    }
+    .css-1cpxqw2 {
+        color: #00ffff !important;
+    }
+    .stTextInput > div > div > input {
+        background-color: #111111;
+        color: #00ffff;
+        border: 1px solid #00ffff;
+    }
+    .stChatMessage {
+        background-color: #111111;
+        border-left: 2px solid #00ffff;
+        margin: 8px 0;
+        padding: 10px;
+        border-radius: 8px;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-    # Create a session state variable to store the chat messages. This ensures that the
-    # messages persist across reruns.
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+# --- TITLE ---
+st.title("🌙 Dream Analyzer")
 
-    # Display the existing chat messages via `st.chat_message`.
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+# --- INITIAL MESSAGE STATE ---
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        {"role": "system", "content": "You are a kind and insightful dream interpretation assistant. Greet the user warmly. Ask them to describe their dream in detail, and then provide a gentle and meaningful analysis from a psychological or emotional perspective."},
+        {"role": "assistant", "content": "Hello dreamer 🌌\n\nI'm here to explore the depths of your dream with you. Please share your dream in as much detail as you remember — I'm listening."}
+    ]
 
-    # Create a chat input field to allow the user to enter a message. This will display
-    # automatically at the bottom of the page.
-    if prompt := st.chat_input("What is up?"):
+# --- DISPLAY MESSAGES ---
+for msg in st.session_state.messages[1:]:  # skip initial system prompt
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
-        # Store and display the current prompt.
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+# --- USER INPUT ---
+if prompt := st.chat_input("Tell me about your dream..."):
+    st.chat_message("user").markdown(prompt)
+    st.session_state.messages.append({"role": "user", "content": prompt})
 
-        # Generate a response using the OpenAI API.
-        stream = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": m["role"], "content": m["content"]}
-                for m in st.session_state.messages
-            ],
-            stream=True,
-        )
+    with st.spinner("🔍 Interpreting the hidden messages in your dream..."):
+        headers = {
+            "Authorization": f"Bearer {API_KEY}",
+            "Content-Type": "application/json"
+        }
 
-        # Stream the response to the chat using `st.write_stream`, then store it in 
-        # session state.
-        with st.chat_message("assistant"):
-            response = st.write_stream(stream)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+        payload = {
+            "model": MODEL,
+            "messages": st.session_state.messages
+        }
+
+        response = requests.post(API_URL, headers=headers, json=payload)
+
+        if response.status_code == 200:
+            reply = response.json()["choices"][0]["message"]["content"]
+            st.chat_message("assistant").markdown(reply)
+            st.session_state.messages.append({"role": "assistant", "content": reply})
+        else:
+            st.error("Something went wrong: " + response.text)
